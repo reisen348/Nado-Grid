@@ -1,0 +1,31 @@
+//@version=6
+indicator("Nado Grid Range", overlay = true)
+
+strategyId = input.string("", "Strategy ID")
+webhookSecret = input.string("", "Webhook Secret")
+nonce = input.string("1", "Nonce")
+sendSignal = input.bool(false, "Send")
+
+upper = input.price(110000.0, "Upper", confirm = true)
+lower = input.price(90000.0, "Lower", confirm = true)
+
+upperPlot = plot(upper, "Upper", color = color.new(color.red, 0), linewidth = 2)
+lowerPlot = plot(lower, "Lower", color = color.new(color.green, 0), linewidth = 2)
+fill(upperPlot, lowerPlot, color = color.new(color.blue, 92))
+
+var string lastNonce = ""
+isReady = strategyId != "" and webhookSecret != "" and upper > lower
+shouldSend = barstate.islast and sendSignal and isReady and nonce != lastNonce
+
+if shouldSend
+    message = "{" +
+      "\"strategyId\":\"" + strategyId + "\"," +
+      "\"nonce\":\"" + nonce + "\"," +
+      "\"symbol\":\"" + syminfo.ticker + "\"," +
+      "\"upper\":" + str.tostring(upper) + "," +
+      "\"lower\":" + str.tostring(lower) + "," +
+      "\"timestamp\":" + str.tostring(timenow) + "," +
+      "\"secret\":\"" + webhookSecret + "\"" +
+      "}"
+    alert(message, alert.freq_once_per_bar_close)
+    lastNonce := nonce

@@ -1,0 +1,16 @@
+[Unit]
+Description=Nado Grid Tool
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/nado-grid
+EnvironmentFile=/opt/nado-grid/.env
+ExecStart=/usr/bin/pnpm --filter @nado-grid/api start
+Restart=always
+RestartSec=5
+User=nado-grid
+Group=nado-grid
+
+[Install]
+WantedBy=multi-user.target

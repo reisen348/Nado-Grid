@@ -1,0 +1,21 @@
+{
+  "name": "@nado-grid/adapters",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./mock": "./src/mock.ts",
+    "./nado": "./src/nado/index.ts"
+  },
+  "dependencies": {
+    "@nado-grid/shared": "workspace:*",
+    "@nadohq/client": "^0.10.0",
+    "@nadohq/shared": "^0.10.0",
+    "viem": "^2.23.2"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

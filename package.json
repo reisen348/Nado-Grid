@@ -1,0 +1,19 @@
+{
+  "name": "nado-grid-tool",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @nado-grid/api --filter @nado-grid/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "node --test --experimental-strip-types tests/**/*.test.ts",
+    "test:workspace": "pnpm -r test",
+    "start": "pnpm --filter @nado-grid/api start"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
