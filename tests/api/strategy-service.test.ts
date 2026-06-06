@@ -54,6 +54,57 @@ test("strategy service creates, previews, starts dry-run, and stops", async () =
   assert.equal(stopped.status, "stopped");
 });
 
+test("strategy service updates grid parameters and syncs latest adapter price", async () => {
+  const store = new MemoryStrategyStore();
+  const adapter = new MockDexAdapter({ defaultPrice: 100_000 });
+  const service = new StrategyService(store, adapter, config);
+
+  const created = await service.createStrategy({
+    currentPrice: 100_000,
+    config: {
+      market: "BTC-PERP",
+      direction: "long",
+      lowerPrice: 90_000,
+      upperPrice: 110_000,
+      gridCount: 10,
+      marginPerGrid: 10,
+      leverage: 3,
+      takeProfitPrice: 112_000,
+      stopLossPrice: 88_000,
+      postOnly: true,
+      network: "mainnet"
+    }
+  });
+
+  const updated = await service.updateStrategy(created.strategy.id, {
+    name: "BTC观察网格",
+    currentPrice: 100_000,
+    config: {
+      market: "BTC-PERP",
+      direction: "long",
+      lowerPrice: 92_000,
+      upperPrice: 112_000,
+      gridCount: 8,
+      marginPerGrid: 12,
+      leverage: 2,
+      takeProfitPrice: 115_000,
+      stopLossPrice: 89_000,
+      postOnly: true,
+      network: "mainnet"
+    }
+  });
+
+  assert.equal(updated.strategy.name, "BTC观察网格");
+  assert.equal(updated.strategy.config.gridCount, 8);
+  assert.equal(updated.strategy.status, "ready");
+
+  adapter.setMarketPrice("BTC-PERP", 101_500);
+  const synced = await service.syncStatus(created.strategy.id);
+  assert.equal(synced.strategy.currentPrice, 101_500);
+  assert.ok(synced.strategy.lastSyncedAt);
+  assert.equal(synced.preview?.currentPrice, 101_500);
+});
+
 test("TradingView webhook reserves nonce and updates range once", async () => {
   const store = new MemoryStrategyStore();
   const adapter = new MockDexAdapter({ defaultPrice: 100_000 });

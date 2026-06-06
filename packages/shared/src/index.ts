@@ -40,6 +40,7 @@ export interface StrategyRecord {
   executionMode: ExecutionMode;
   createdAt: string;
   updatedAt: string;
+  lastSyncedAt?: string;
   lastWebhookNonce?: string;
   error?: string;
 }

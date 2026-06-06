@@ -110,6 +110,13 @@ button:disabled {
   font-size: 24px;
 }
 
+.sync-caption {
+  display: block;
+  margin-top: 4px;
+  color: #8f99a8;
+  font-size: 12px;
+}
+
 .topbar-actions,
 .button-row {
   gap: 8px;
@@ -132,6 +139,10 @@ button:disabled {
 }
 
 .action-panel {
+  grid-column: 1;
+}
+
+.assist-panel {
   grid-column: 1;
 }
 
@@ -280,6 +291,10 @@ select:focus {
   width: 100%;
 }
 
+.full + .full {
+  margin-top: 8px;
+}
+
 .strategy-list {
   display: grid;
   gap: 8px;
@@ -316,6 +331,10 @@ select:focus {
   margin-top: 14px;
 }
 
+.metric-strip.compact {
+  margin-top: 12px;
+}
+
 .metric {
   min-height: 72px;
   border: 1px solid #2a3038;
@@ -332,6 +351,108 @@ select:focus {
 .metric strong {
   margin-top: 8px;
   font-size: 18px;
+}
+
+.assist-state {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  border-radius: 6px;
+  padding: 0 8px;
+  background: #2b313a;
+  color: #d9dee7;
+  font-size: 12px;
+}
+
+.assist-state.ok {
+  background: #17452e;
+  color: #8df0bd;
+}
+
+.assist-state.warn {
+  background: #423719;
+  color: #ffd98a;
+}
+
+.assist-state.danger {
+  background: #572424;
+  color: #ffaaaa;
+}
+
+.range-meter {
+  display: grid;
+  gap: 8px;
+}
+
+.range-track {
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #5ed49f, #4f8cff 50%, #ff8f70);
+}
+
+.range-track span {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  transform: translate(-50%, -50%);
+  border: 2px solid #101216;
+  border-radius: 999px;
+  background: #f2f4f7;
+}
+
+.range-labels,
+.signal-list div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.range-labels {
+  color: #8f99a8;
+  font-size: 12px;
+}
+
+.range-labels span:nth-child(2) {
+  color: #f2f4f7;
+}
+
+.assist-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.assist-actions button {
+  padding: 0 8px;
+}
+
+.signal-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.signal-list div {
+  min-height: 40px;
+  border: 1px solid #2a3038;
+  border-radius: 6px;
+  background: #11161c;
+  padding: 8px 10px;
+}
+
+.signal-list span {
+  color: #8f99a8;
+  font-size: 12px;
+}
+
+.signal-list strong {
+  color: #f2f4f7;
+  font-size: 13px;
+  text-align: right;
 }
 
 .table-wrap {
@@ -444,6 +565,10 @@ td:last-child {
   color: #8f99a8;
 }
 
+.empty-state.compact {
+  min-height: 120px;
+}
+
 .tradingview-frame {
   display: block;
   width: 100%;
@@ -453,6 +578,82 @@ td:last-child {
   border-radius: 8px;
   background: #0f1318;
   overflow: hidden;
+}
+
+.tv-bridge {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  border: 1px solid #2a3038;
+  border-radius: 8px;
+  background: #11161c;
+  padding: 12px;
+}
+
+.bridge-head,
+.bridge-foot {
+  display: grid;
+  gap: 10px;
+}
+
+.bridge-head {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.bridge-head span {
+  display: block;
+  color: #8f99a8;
+  font-size: 12px;
+}
+
+.bridge-head strong {
+  display: block;
+  margin-top: 5px;
+  color: #f2f4f7;
+  font-size: 14px;
+}
+
+.grid-map {
+  position: relative;
+  height: 46px;
+  border: 1px solid #252b34;
+  border-radius: 6px;
+  background: linear-gradient(90deg, rgba(94, 212, 159, 0.14), rgba(79, 140, 255, 0.14) 50%, rgba(255, 143, 112, 0.14));
+  overflow: hidden;
+}
+
+.grid-map-line,
+.grid-map-current {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  transform: translateX(-50%);
+}
+
+.grid-map-line {
+  width: 1px;
+  background: #3a4250;
+}
+
+.grid-map-current {
+  width: 3px;
+  background: #f2f4f7;
+  box-shadow: 0 0 0 999px rgba(242, 244, 247, 0.02);
+}
+
+.bridge-foot {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  color: #8f99a8;
+  font-size: 12px;
+}
+
+.bridge-foot span:nth-child(2) {
+  color: #f2f4f7;
+  text-align: center;
+}
+
+.bridge-foot span:last-child {
+  text-align: right;
 }
 
 .audit-list {
@@ -508,6 +709,7 @@ td:last-child {
   .config-panel,
   .chart-panel,
   .action-panel,
+  .assist-panel,
   .preview-panel,
   .audit-panel {
     grid-column: auto;
@@ -528,7 +730,7 @@ td:last-child {
 
   .topbar-actions {
     display: grid;
-    grid-template-columns: 38px 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .field-grid,
@@ -536,9 +738,24 @@ td:last-child {
     grid-template-columns: 1fr;
   }
 
+  .assist-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .chart-title {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .bridge-head,
+  .bridge-foot {
+    grid-template-columns: 1fr;
+  }
+
+  .bridge-foot span,
+  .bridge-foot span:nth-child(2),
+  .bridge-foot span:last-child {
+    text-align: left;
   }
 
   .chart-symbol-field {

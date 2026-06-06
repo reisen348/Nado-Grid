@@ -11,6 +11,12 @@ export async function registerStrategyRoutes(app: FastifyInstance, service: Stra
     return service.createStrategy(input);
   });
 
+  app.patch("/api/strategies/:id", async (request) => {
+    const { id } = request.params as { id: string };
+    const input = parseStrategyCreateInput(request.body, config.nadoNetwork);
+    return service.updateStrategy(id, input);
+  });
+
   app.get("/api/strategies/:id/status", async (request) => {
     const { id } = request.params as { id: string };
     return service.getStatus(id);
@@ -20,6 +26,12 @@ export async function registerStrategyRoutes(app: FastifyInstance, service: Stra
     const { id } = request.params as { id: string };
     const body = request.body as { currentPrice?: number } | undefined;
     return service.preview(id, body?.currentPrice);
+  });
+
+  app.post("/api/strategies/:id/sync", async (request) => {
+    const { id } = request.params as { id: string };
+    const body = request.body as { currentPrice?: number } | undefined;
+    return service.syncStatus(id, body?.currentPrice);
   });
 
   app.post("/api/strategies/:id/start", async (request) => {

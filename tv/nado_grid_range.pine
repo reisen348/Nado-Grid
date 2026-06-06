@@ -1,17 +1,17 @@
 //@version=6
-indicator("Nado Grid Range", overlay = true)
+indicator("Nado 网格区间", overlay = true)
 
-strategyId = input.string("", "Strategy ID")
-webhookSecret = input.string("", "Webhook Secret")
-marketOverride = input.string("", "Market Override")
+strategyId = input.string("", "策略 ID")
+webhookSecret = input.string("", "Webhook 密钥")
+marketOverride = input.string("", "市场覆盖")
 nonce = input.string("1", "Nonce")
-sendSignal = input.bool(false, "Send")
+sendSignal = input.bool(false, "发送")
 
-upper = input.price(110000.0, "Upper", confirm = true)
-lower = input.price(90000.0, "Lower", confirm = true)
+upper = input.price(110000.0, "区间上限", confirm = true)
+lower = input.price(90000.0, "区间下限", confirm = true)
 
-upperPlot = plot(upper, "Upper", color = color.new(color.red, 0), linewidth = 2)
-lowerPlot = plot(lower, "Lower", color = color.new(color.green, 0), linewidth = 2)
+upperPlot = plot(upper, "区间上限", color = color.new(color.red, 0), linewidth = 2)
+lowerPlot = plot(lower, "区间下限", color = color.new(color.green, 0), linewidth = 2)
 fill(upperPlot, lowerPlot, color = color.new(color.blue, 92))
 
 var string lastNonce = ""

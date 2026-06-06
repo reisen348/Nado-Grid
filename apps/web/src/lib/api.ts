@@ -41,6 +41,13 @@ export async function createStrategy(payload: CreateStrategyPayload): Promise<{ 
   });
 }
 
+export async function updateStrategy(id: string, payload: CreateStrategyPayload): Promise<{ strategy: StrategyRecord; preview: GridPreview }> {
+  return request(`/api/strategies/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
 export async function getStatus(id: string): Promise<StrategyStatusResponse> {
   return request(`/api/strategies/${id}/status`);
 }
@@ -52,10 +59,22 @@ export async function previewStrategy(id: string, currentPrice?: number): Promis
   });
 }
 
-export async function startStrategy(id: string, executionMode: "dry-run" | "live", confirmPhrase?: string): Promise<{ strategy: StrategyRecord; preview: GridPreview }> {
+export async function syncStrategy(id: string, currentPrice?: number): Promise<StrategyStatusResponse> {
+  return request(`/api/strategies/${id}/sync`, {
+    method: "POST",
+    body: JSON.stringify({ currentPrice })
+  });
+}
+
+export async function startStrategy(
+  id: string,
+  executionMode: "dry-run" | "live",
+  confirmPhrase?: string,
+  currentPrice?: number
+): Promise<{ strategy: StrategyRecord; preview: GridPreview }> {
   return request(`/api/strategies/${id}/start`, {
     method: "POST",
-    body: JSON.stringify({ executionMode, confirmPhrase })
+    body: JSON.stringify({ executionMode, confirmPhrase, currentPrice })
   });
 }
 

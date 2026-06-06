@@ -48,7 +48,8 @@ export class StrategyService {
       currentPrice,
       executionMode: input.executionMode ?? "dry-run",
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      lastSyncedAt: now
     };
     const preview = buildPreview(strategy.id, strategy.config, currentPrice);
     await this.store.upsertStrategy({ ...strategy, status: "ready" });
@@ -60,6 +61,47 @@ export class StrategyService {
       metadata: { market: strategy.config.market, direction: strategy.config.direction }
     });
     return { strategy: { ...strategy, status: "ready" }, preview };
+  }
+
+  async updateStrategy(id: string, input: StrategyCreateInput): Promise<{ strategy: StrategyRecord; preview: GridPreview }> {
+    const strategy = await this.requireStrategy(id);
+    if (strategy.status === "running" && strategy.executionMode === "live") {
+      throw new Error("running live strategies must be stopped before editing grid parameters");
+    }
+    if (strategy.status === "running") {
+      await this.adapter.cancelStrategyOrders(strategy.id, strategy.config.market);
+    }
+    const now = new Date().toISOString();
+    const nextConfig = {
+      ...input.config,
+      market: normalizeMarket(input.config.market)
+    };
+    const currentPrice = await this.resolveCurrentPrice(
+      nextConfig.market,
+      nextConfig.productId,
+      input.currentPrice,
+      strategy.currentPrice ?? midpoint(nextConfig.lowerPrice, nextConfig.upperPrice)
+    );
+    const updated: StrategyRecord = {
+      ...strategy,
+      name: input.name ?? strategy.name,
+      status: "ready",
+      config: nextConfig,
+      currentPrice,
+      executionMode: input.executionMode ?? strategy.executionMode,
+      updatedAt: now,
+      lastSyncedAt: now
+    };
+    const preview = buildPreview(updated.id, updated.config, currentPrice);
+    await this.store.upsertStrategy(updated);
+    await writeAudit(this.store, {
+      strategyId: updated.id,
+      level: "info",
+      type: "strategy.updated",
+      message: "Strategy grid parameters updated",
+      metadata: { market: updated.config.market, direction: updated.config.direction }
+    });
+    return { strategy: updated, preview };
   }
 
   async listStrategies(): Promise<StrategyRecord[]> {
@@ -78,12 +120,29 @@ export class StrategyService {
     const currentPrice = await this.resolveCurrentPrice(
       strategy.config.market,
       strategy.config.productId,
-      currentPriceOverride ?? strategy.currentPrice,
-      midpoint(strategy.config.lowerPrice, strategy.config.upperPrice)
+      currentPriceOverride,
+      strategy.currentPrice ?? midpoint(strategy.config.lowerPrice, strategy.config.upperPrice)
     );
     const preview = buildPreview(strategy.id, strategy.config, currentPrice);
-    await this.store.upsertStrategy({ ...strategy, currentPrice, status: strategy.status === "draft" ? "ready" : strategy.status, updatedAt: new Date().toISOString() });
+    const now = new Date().toISOString();
+    await this.store.upsertStrategy({
+      ...strategy,
+      currentPrice,
+      status: strategy.status === "draft" ? "ready" : strategy.status,
+      updatedAt: now,
+      lastSyncedAt: now
+    });
     return preview;
+  }
+
+  async syncStatus(id: string, currentPriceOverride?: number): Promise<StrategyStatusResponse> {
+    const strategy = await this.requireStrategy(id);
+    if (strategy.status === "running") {
+      await this.tickStrategy(strategy, currentPriceOverride);
+    } else {
+      await this.preview(id, currentPriceOverride);
+    }
+    return this.getStatus(id);
   }
 
   async applyTradingViewWebhook(payload: TradingViewWebhookPayload): Promise<{ strategy: StrategyRecord; preview: GridPreview; duplicate: boolean }> {
@@ -113,7 +172,8 @@ export class StrategyService {
         upperPrice: payload.upper
       },
       currentPrice,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      lastSyncedAt: new Date().toISOString()
     };
     const preview = buildPreview(updated.id, updated.config, currentPrice);
     await this.store.upsertStrategy(updated);
@@ -149,7 +209,8 @@ export class StrategyService {
       status: "running",
       executionMode,
       currentPrice,
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      lastSyncedAt: new Date().toISOString()
     };
     await this.store.upsertStrategy(updated);
     await writeAudit(this.store, {
@@ -198,12 +259,12 @@ export class StrategyService {
     }
   }
 
-  private async tickStrategy(strategy: StrategyRecord): Promise<void> {
+  private async tickStrategy(strategy: StrategyRecord, currentPriceOverride?: number): Promise<void> {
     const price = await this.resolveCurrentPrice(
       strategy.config.market,
       strategy.config.productId,
-      strategy.currentPrice,
-      midpoint(strategy.config.lowerPrice, strategy.config.upperPrice)
+      currentPriceOverride,
+      strategy.currentPrice ?? midpoint(strategy.config.lowerPrice, strategy.config.upperPrice)
     );
     const riskTrigger = shouldTriggerGlobalRisk(strategy.config, price);
     if (riskTrigger) {
@@ -225,7 +286,8 @@ export class StrategyService {
     for (const fill of fills) {
       await this.handleFill(strategy, fill);
     }
-    await this.store.upsertStrategy({ ...strategy, currentPrice: price, updatedAt: new Date().toISOString() });
+    const now = new Date().toISOString();
+    await this.store.upsertStrategy({ ...strategy, currentPrice: price, updatedAt: now, lastSyncedAt: now });
   }
 
   private async handleFill(strategy: StrategyRecord, fill: FillEvent): Promise<void> {

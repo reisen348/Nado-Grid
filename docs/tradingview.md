@@ -1,12 +1,12 @@
-# TradingView Setup
+# TradingView 接入
 
-1. Add `tv/nado_grid_range.pine` to Pine Editor.
-2. Add the indicator to the chart.
-3. Paste the strategy ID from the Web panel.
-4. Paste `TRADINGVIEW_WEBHOOK_SECRET`.
-5. Set `Market Override` when the TradingView ticker differs from the Nado market name, for example `BTC-PERP`.
-6. Drag the upper and lower price inputs on the chart.
-7. Change `Nonce`, toggle `Send`, and create an alert using `Any alert() function call`.
-8. Set the webhook URL to `https://your-domain.example/api/tv/webhook`.
+1. 将 `tv/nado_grid_range.pine` 添加到 TradingView Pine 编辑器。
+2. 把指标添加到图表。
+3. 从 Web 看板复制策略 ID，并粘贴到指标的 `策略 ID`。
+4. 将 `.env` 中的 `TRADINGVIEW_WEBHOOK_SECRET` 粘贴到 `Webhook 密钥`。
+5. 如果 TradingView 交易代码和 Nado 市场名不一致，在 `市场覆盖` 中填写 Nado 市场名，例如 `BTC-PERP`。
+6. 拖动或输入上下边界价格。
+7. 每次发送前修改 `Nonce`，打开 `发送`，并创建 `Any alert() function call` 类型的提醒。
+8. Webhook 地址填写 `https://你的域名/api/tv/webhook`。
 
-The webhook updates only the grid range. Live trading still requires confirmation in the Web panel.
+Webhook 只会更新网格区间。实盘启动仍然必须在 Web 看板中手动确认。
