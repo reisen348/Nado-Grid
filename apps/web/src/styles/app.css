@@ -117,17 +117,31 @@ button:disabled {
 
 .grid-layout {
   display: grid;
-  grid-template-columns: minmax(320px, 480px) minmax(260px, 360px) minmax(460px, 1fr);
+  grid-template-columns: minmax(320px, 420px) minmax(520px, 1fr);
   gap: 16px;
   align-items: start;
 }
 
 .config-panel {
-  grid-row: span 2;
+  grid-column: 1;
+  grid-row: span 3;
+}
+
+.chart-panel {
+  grid-column: 2;
+}
+
+.action-panel {
+  grid-column: 1;
 }
 
 .preview-panel {
+  grid-column: 2;
   grid-row: span 2;
+}
+
+.audit-panel {
+  grid-column: 1;
 }
 
 .panel {
@@ -143,6 +157,21 @@ button:disabled {
 
 .panel-title h3 {
   font-size: 16px;
+}
+
+.chart-title {
+  align-items: end;
+}
+
+.chart-title small {
+  display: block;
+  margin-top: 4px;
+  color: #8f99a8;
+  font-size: 12px;
+}
+
+.chart-symbol-field {
+  width: min(280px, 100%);
 }
 
 label {
@@ -415,6 +444,17 @@ td:last-child {
   color: #8f99a8;
 }
 
+.tradingview-frame {
+  display: block;
+  width: 100%;
+  height: clamp(540px, 38vw, 680px);
+  min-height: 540px;
+  border: 1px solid #2a3038;
+  border-radius: 8px;
+  background: #0f1318;
+  overflow: hidden;
+}
+
 .audit-list {
   display: grid;
   gap: 8px;
@@ -464,6 +504,15 @@ td:last-child {
   .grid-layout {
     grid-template-columns: 1fr;
   }
+
+  .config-panel,
+  .chart-panel,
+  .action-panel,
+  .preview-panel,
+  .audit-panel {
+    grid-column: auto;
+    grid-row: auto;
+  }
 }
 
 @media (max-width: 640px) {
@@ -485,5 +534,19 @@ td:last-child {
   .field-grid,
   .metric-strip {
     grid-template-columns: 1fr;
+  }
+
+  .chart-title {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .chart-symbol-field {
+    width: 100%;
+  }
+
+  .tradingview-frame {
+    height: clamp(360px, 90vw, 480px);
+    min-height: 360px;
   }
 }

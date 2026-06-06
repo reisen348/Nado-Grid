@@ -40,6 +40,7 @@ export function App() {
   const [audit, setAudit] = useState<AuditEvent[]>([]);
   const [executionMode, setExecutionMode] = useState<"dry-run" | "live">("dry-run");
   const [confirmPhrase, setConfirmPhrase] = useState("");
+  const [tvSymbol, setTvSymbol] = useState(marketToTradingViewSymbol(initialForm.market));
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -54,7 +55,12 @@ export function App() {
     void refreshStrategies();
   }, [authenticated]);
 
+  useEffect(() => {
+    setTvSymbol(marketToTradingViewSymbol(selected?.config.market ?? form.market));
+  }, [selected?.id, selected?.config.market, form.market]);
+
   const selectedStatusClass = selected ? `status status-${selected.status}` : "status";
+  const chartSymbol = tvSymbol.trim() || marketToTradingViewSymbol(selected?.config.market ?? form.market);
   const totalMargin = useMemo(() => {
     const gridCount = Number(form.gridCount) || 0;
     const margin = Number(form.marginPerGrid) || 0;
@@ -293,6 +299,20 @@ export function App() {
             </div>
           </form>
 
+          <section className="panel chart-panel">
+            <div className="panel-title chart-title">
+              <div>
+                <h3>TradingView</h3>
+                <small>{selected?.config.market ?? form.market}</small>
+              </div>
+              <label className="chart-symbol-field">
+                Symbol
+                <input value={tvSymbol} onChange={(event) => setTvSymbol(event.target.value)} />
+              </label>
+            </div>
+            <TradingViewChart symbol={chartSymbol} />
+          </section>
+
           <section className="panel action-panel">
             <div className="panel-title">
               <h3>Execution</h3>
@@ -392,6 +412,16 @@ export function App() {
   );
 }
 
+function TradingViewChart({ symbol }: { symbol: string }) {
+  return (
+    <iframe
+      className="tradingview-frame"
+      title={`${symbol} TradingView chart`}
+      srcDoc={buildTradingViewHtml(symbol)}
+    />
+  );
+}
+
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
     <label>
@@ -422,6 +452,110 @@ function formatMoney(value: number): string {
 
 function formatPrice(value: number): string {
   return value.toLocaleString(undefined, { maximumFractionDigits: 6 });
+}
+
+function marketToTradingViewSymbol(market: string): string {
+  const normalized = market.trim().toUpperCase();
+  const knownSymbols: Record<string, string> = {
+    "BTC-PERP": "BINANCE:BTCUSDT",
+    "ETH-PERP": "BINANCE:ETHUSDT",
+    "SOL-PERP": "BINANCE:SOLUSDT",
+    "BNB-PERP": "BINANCE:BNBUSDT",
+    "XRP-PERP": "BINANCE:XRPUSDT",
+    "DOGE-PERP": "BINANCE:DOGEUSDT"
+  };
+  if (knownSymbols[normalized]) return knownSymbols[normalized];
+  if (normalized.includes(":")) return normalized;
+  const base = normalized.replace(/[-_/]?(PERP|USDT|USD)$/u, "");
+  return base ? `BINANCE:${base}USDT` : "BINANCE:BTCUSDT";
+}
+
+function buildTradingViewHtml(symbol: string): string {
+  const config = JSON.stringify({
+    autosize: true,
+    symbol,
+    interval: "60",
+    timezone: "Etc/UTC",
+    theme: "dark",
+    style: "1",
+    locale: "en",
+    enable_publishing: false,
+    allow_symbol_change: true,
+    hide_side_toolbar: false,
+    hide_top_toolbar: false,
+    hide_legend: false,
+    save_image: true,
+    calendar: false,
+    support_host: "https://www.tradingview.com"
+  }).replaceAll("<", "\\u003c");
+
+  const escapedSymbol = escapeHtml(symbol);
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #0f1318;
+      }
+
+      .tradingview-widget-container {
+        width: 100%;
+        height: 100%;
+      }
+
+      .tradingview-widget-container__widget {
+        width: 100%;
+        height: calc(100% - 32px);
+      }
+
+      .tradingview-widget-copyright {
+        display: flex;
+        height: 32px;
+        align-items: center;
+        gap: 4px;
+        padding: 0 10px;
+        box-sizing: border-box;
+        border-top: 1px solid #252b34;
+        color: #8f99a8;
+        font: 12px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .tradingview-widget-copyright a {
+        color: #8bb5ff;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="tradingview-widget-container">
+      <div class="tradingview-widget-container__widget"></div>
+      <div class="tradingview-widget-copyright">
+        <a href="https://www.tradingview.com/" rel="noopener nofollow" target="_blank">${escapedSymbol} chart</a>
+        <span>by TradingView</span>
+      </div>
+      <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js" async>
+        ${config}
+      </script>
+    </div>
+  </body>
+</html>`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function errorMessage(value: unknown): string {

@@ -77,7 +77,10 @@ async function request<T>(url: string, init: RequestInit = {}): Promise<T> {
   });
   const payload = (await response.json().catch(() => undefined)) as T | { error?: { message?: string } } | undefined;
   if (!response.ok) {
-    const message = payload && "error" in payload ? payload.error?.message : response.statusText;
+    const message =
+      payload && typeof payload === "object" && "error" in payload
+        ? payload.error?.message
+        : response.statusText;
     throw new Error(message || "Request failed");
   }
   return payload as T;

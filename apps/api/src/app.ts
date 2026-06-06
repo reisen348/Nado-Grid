@@ -49,11 +49,12 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
   });
 
   app.setErrorHandler((error, _request, reply) => {
-    const statusCode = error.message.includes("not found") ? 404 : error.message.includes("invalid") ? 400 : 500;
+    const appError = error instanceof Error ? error : new Error(String(error));
+    const statusCode = appError.message.includes("not found") ? 404 : appError.message.includes("invalid") ? 400 : 500;
     reply.code(statusCode).send({
       error: {
-        code: error.name || "error",
-        message: error.message
+        code: appError.name || "error",
+        message: appError.message
       }
     });
   });
@@ -69,9 +70,8 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
   await registerStrategyRoutes(app, service, config);
   await registerTradingViewRoutes(app, service);
 
-  const webDist = join(process.cwd(), "apps/web/dist");
-  const hasWebBuild = existsSync(webDist);
-  if (hasWebBuild) {
+  const webDist = findWebDist();
+  if (webDist) {
     await app.register(fastifyStatic, {
       root: webDist,
       prefix: "/",
@@ -82,7 +82,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Fastify
     if (request.url.startsWith("/api/")) {
       return reply.code(404).send({ error: { code: "not_found", message: "API route not found" } });
     }
-    if (hasWebBuild) return reply.sendFile("index.html");
+    if (webDist) return reply.sendFile("index.html");
     return reply.type("text/html").send("<!doctype html><title>Nado Grid</title><p>Build the web app with pnpm --filter @nado-grid/web build.</p>");
   });
 
@@ -104,6 +104,13 @@ function createAdapter(config: AppConfig): DexAdapter {
     subaccount: config.nadoSubaccount,
     liveTradingEnabled: config.liveTradingEnabled
   });
+}
+
+function findWebDist(): string | undefined {
+  for (const path of [join(process.cwd(), "apps/web/dist"), join(process.cwd(), "../../apps/web/dist")]) {
+    if (existsSync(path)) return path;
+  }
+  return undefined;
 }
 
 declare module "fastify" {

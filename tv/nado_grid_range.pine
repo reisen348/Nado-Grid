@@ -3,6 +3,7 @@ indicator("Nado Grid Range", overlay = true)
 
 strategyId = input.string("", "Strategy ID")
 webhookSecret = input.string("", "Webhook Secret")
+marketOverride = input.string("", "Market Override")
 nonce = input.string("1", "Nonce")
 sendSignal = input.bool(false, "Send")
 
@@ -14,14 +15,15 @@ lowerPlot = plot(lower, "Lower", color = color.new(color.green, 0), linewidth = 
 fill(upperPlot, lowerPlot, color = color.new(color.blue, 92))
 
 var string lastNonce = ""
-isReady = strategyId != "" and webhookSecret != "" and upper > lower
+symbol = marketOverride != "" ? marketOverride : syminfo.ticker
+isReady = strategyId != "" and webhookSecret != "" and symbol != "" and upper > lower
 shouldSend = barstate.islast and sendSignal and isReady and nonce != lastNonce
 
 if shouldSend
     message = "{" +
       "\"strategyId\":\"" + strategyId + "\"," +
       "\"nonce\":\"" + nonce + "\"," +
-      "\"symbol\":\"" + syminfo.ticker + "\"," +
+      "\"symbol\":\"" + symbol + "\"," +
       "\"upper\":" + str.tostring(upper) + "," +
       "\"lower\":" + str.tostring(lower) + "," +
       "\"timestamp\":" + str.tostring(timenow) + "," +

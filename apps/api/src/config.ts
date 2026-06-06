@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { loadEnvFile } from "node:process";
 import type { NadoNetwork } from "../../../packages/shared/src/index.ts";
 
 export interface AppConfig {
@@ -18,7 +19,14 @@ export interface AppConfig {
   useMockAdapter: boolean;
 }
 
+let defaultEnvLoaded = false;
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+  if (env === process.env && !defaultEnvLoaded) {
+    defaultEnvLoaded = true;
+    loadLocalEnvFile();
+  }
+
   const nodeEnv = env.NODE_ENV ?? "development";
   return {
     nodeEnv,
@@ -40,6 +48,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     liveTradingEnabled: env.LIVE_TRADING_ENABLED === "true",
     useMockAdapter: env.USE_MOCK_ADAPTER === "true" || nodeEnv === "test"
   };
+}
+
+function loadLocalEnvFile(): void {
+  for (const path of [".env", "../../.env"]) {
+    try {
+      loadEnvFile(path);
+      return;
+    } catch (error) {
+      const code = typeof error === "object" && error && "code" in error ? (error as { code?: string }).code : undefined;
+      if (code !== "ENOENT") throw error;
+    }
+  }
 }
 
 function required(value: string | undefined, name: string, fallback?: string): string {
