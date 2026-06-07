@@ -31,6 +31,7 @@ test("strategy service creates, previews, starts dry-run, and stops", async () =
     currentPrice: 100_000,
     config: {
       market: "BTC-PERP",
+      productId: 1,
       direction: "long",
       lowerPrice: 90_000,
       upperPrice: 110_000,
@@ -81,6 +82,7 @@ test("strategy service updates grid parameters and syncs latest adapter price", 
     currentPrice: 100_000,
     config: {
       market: "BTC-PERP",
+      productId: 1,
       direction: "long",
       lowerPrice: 92_000,
       upperPrice: 112_000,
@@ -103,6 +105,8 @@ test("strategy service updates grid parameters and syncs latest adapter price", 
   assert.equal(synced.strategy.currentPrice, 101_500);
   assert.ok(synced.strategy.lastSyncedAt);
   assert.equal(synced.preview?.currentPrice, 101_500);
+  assert.equal(synced.candles?.length, 120);
+  assert.ok(synced.candles?.at(-1)?.close);
 });
 
 test("TradingView webhook reserves nonce and updates range once", async () => {

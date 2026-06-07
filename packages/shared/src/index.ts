@@ -115,6 +115,15 @@ export interface DexMarketPrice {
   updatedAt: string;
 }
 
+export interface MarketCandle {
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
 export interface DexPlacedOrder {
   exchangeOrderId: string;
   clientOrderId: string;
@@ -139,6 +148,7 @@ export interface StrategyStatusResponse {
   strategy: StrategyRecord;
   preview?: GridPreview;
   audit: AuditEvent[];
+  candles?: MarketCandle[];
 }
 
 export interface ApiErrorResponse {

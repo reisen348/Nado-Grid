@@ -17,7 +17,7 @@ SESSION_SECRET=...
 TRADINGVIEW_WEBHOOK_SECRET=...
 DB_PATH=/opt/nado-grid/data/nado-grid.sqlite
 NADO_NETWORK=mainnet
-NADO_CHAIN_ENV=ink
+NADO_CHAIN_ENV=inkMainnet
 LIVE_TRADING_ENABLED=false
 ```
 

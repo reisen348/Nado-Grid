@@ -42,7 +42,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     ),
     dbPath: resolve(env.DB_PATH ?? "./data/nado-grid.sqlite"),
     nadoNetwork: parseNetwork(env.NADO_NETWORK),
-    nadoChainEnv: env.NADO_CHAIN_ENV ?? (parseNetwork(env.NADO_NETWORK) === "testnet" ? "inkTestnet" : "ink"),
+    nadoChainEnv: env.NADO_CHAIN_ENV ?? (parseNetwork(env.NADO_NETWORK) === "testnet" ? "inkTestnet" : "inkMainnet"),
     nadoPrivateKey: env.NADO_PRIVATE_KEY || undefined,
     nadoSubaccount: env.NADO_SUBACCOUNT ?? "default",
     liveTradingEnabled: env.LIVE_TRADING_ENABLED === "true",

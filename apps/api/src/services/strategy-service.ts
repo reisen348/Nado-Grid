@@ -1,9 +1,18 @@
-import { buildPreview, buildReplenishmentOrders, makeStrategyId, normalizeMarket, shouldTriggerGlobalRisk } from "../../../../packages/core/src/index.ts";
+import {
+  buildGridLevels,
+  buildPreview,
+  buildReplenishmentOrders,
+  buildRiskSummary,
+  makeStrategyId,
+  normalizeMarket,
+  shouldTriggerGlobalRisk
+} from "../../../../packages/core/src/index.ts";
 import type { DexAdapter } from "../../../../packages/adapters/src/index.ts";
 import type {
   ExecutionMode,
   FillEvent,
   GridPreview,
+  MarketCandle,
   StrategyRecord,
   StrategyStatusResponse,
   TradingViewWebhookPayload
@@ -111,8 +120,9 @@ export class StrategyService {
   async getStatus(id: string): Promise<StrategyStatusResponse> {
     const strategy = await this.requireStrategy(id);
     const audit = await this.store.listAudit(id);
-    const preview = strategy.currentPrice ? buildPreview(strategy.id, strategy.config, strategy.currentPrice) : undefined;
-    return { strategy, preview, audit };
+    const preview = strategy.currentPrice ? this.buildStatusPreview(strategy, strategy.currentPrice) : undefined;
+    const candles = await this.loadCandlesticks(strategy);
+    return { strategy, preview, audit, candles };
   }
 
   async preview(id: string, currentPriceOverride?: number): Promise<GridPreview> {
@@ -140,7 +150,7 @@ export class StrategyService {
     if (strategy.status === "running") {
       await this.tickStrategy(strategy, currentPriceOverride);
     } else {
-      await this.preview(id, currentPriceOverride);
+      await this.syncObservedPrice(strategy, currentPriceOverride);
     }
     return this.getStatus(id);
   }
@@ -324,6 +334,59 @@ export class StrategyService {
       return price.markPrice;
     } catch {
       return fallbackPrice;
+    }
+  }
+
+  private async syncObservedPrice(strategy: StrategyRecord, currentPriceOverride?: number): Promise<void> {
+    const currentPrice = await this.resolveCurrentPrice(
+      strategy.config.market,
+      strategy.config.productId,
+      currentPriceOverride,
+      strategy.currentPrice ?? midpoint(strategy.config.lowerPrice, strategy.config.upperPrice)
+    );
+    const now = new Date().toISOString();
+    await this.store.upsertStrategy({
+      ...strategy,
+      currentPrice,
+      status: strategy.status === "draft" ? "ready" : strategy.status,
+      updatedAt: now,
+      lastSyncedAt: now
+    });
+  }
+
+  private buildStatusPreview(strategy: StrategyRecord, currentPrice: number): GridPreview {
+    try {
+      return buildPreview(strategy.id, strategy.config, currentPrice);
+    } catch (error) {
+      const levels = buildGridLevels(strategy.config);
+      const risk = buildRiskSummary(strategy.config, currentPrice, 0);
+      const issues = error instanceof Error ? error.message.split("; ").filter(Boolean) : [];
+      return {
+        strategyId: strategy.id,
+        config: {
+          ...strategy.config,
+          market: normalizeMarket(strategy.config.market)
+        },
+        currentPrice,
+        levels,
+        orders: [],
+        risk: {
+          ...risk,
+          warnings: Array.from(new Set([...risk.warnings, ...issues]))
+        }
+      };
+    }
+  }
+
+  private async loadCandlesticks(strategy: StrategyRecord): Promise<MarketCandle[]> {
+    if (!strategy.config.productId) return [];
+    try {
+      return await this.adapter.getCandlesticks(strategy.config.market, strategy.config.productId, {
+        intervalSeconds: 300,
+        limit: 120
+      });
+    } catch {
+      return [];
     }
   }
 }

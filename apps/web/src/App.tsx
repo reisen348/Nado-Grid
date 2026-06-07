@@ -1,6 +1,6 @@
 import { AlertTriangle, Check, CircleDollarSign, LogIn, Play, RefreshCw, Save, ShieldAlert, Square, Wifi } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { AuditEvent, GridPreview, StrategyRecord } from "../../../packages/shared/src/index.ts";
+import type { AuditEvent, GridPreview, MarketCandle, StrategyRecord, StrategyStatusResponse } from "../../../packages/shared/src/index.ts";
 import {
   createStrategy,
   getStatus,
@@ -39,6 +39,7 @@ export function App() {
   const [strategies, setStrategies] = useState<StrategyRecord[]>([]);
   const [selected, setSelected] = useState<StrategyRecord | undefined>();
   const [preview, setPreview] = useState<GridPreview | undefined>();
+  const [candles, setCandles] = useState<MarketCandle[]>([]);
   const [audit, setAudit] = useState<AuditEvent[]>([]);
   const [executionMode, setExecutionMode] = useState<"dry-run" | "live">("dry-run");
   const [confirmPhrase, setConfirmPhrase] = useState("");
@@ -47,6 +48,7 @@ export function App() {
   const [lastSyncAt, setLastSyncAt] = useState<string | undefined>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [klineBusy, setKlineBusy] = useState(false);
 
   useEffect(() => {
     me()
@@ -91,6 +93,7 @@ export function App() {
   const selectedStatusClass = selected ? `status status-${selected.status}` : "status";
   const chartSymbol = tvSymbol.trim() || marketToTradingViewSymbol(selected?.config.market ?? form.market);
   const observation = useMemo(() => (preview ? buildObservation(preview) : undefined), [preview]);
+  const suggestion = useMemo(() => (preview ? buildCurrentSuggestion(preview, candles) : undefined), [preview, candles]);
   const totalMargin = useMemo(() => {
     const gridCount = Number(form.gridCount) || 0;
     const margin = Number(form.marginPerGrid) || 0;
@@ -109,9 +112,10 @@ export function App() {
     applyStatus(status);
   }
 
-  function applyStatus(status: { strategy: StrategyRecord; preview?: GridPreview; audit: AuditEvent[] }) {
+  function applyStatus(status: StrategyStatusResponse) {
     setSelected(status.strategy);
     setPreview(status.preview);
+    setCandles(status.candles ?? []);
     setAudit(status.audit);
     setLastSyncAt(status.strategy.lastSyncedAt ?? status.strategy.updatedAt);
   }
@@ -139,6 +143,7 @@ export function App() {
       const saved = selected ? await updateStrategy(selected.id, payload) : await createStrategy(payload);
       setSelected(saved.strategy);
       setPreview(saved.preview);
+      setCandles([]);
       setLastSyncAt(saved.strategy.lastSyncedAt ?? saved.strategy.updatedAt);
       await refreshStrategies(saved.strategy.id);
     } catch (caught) {
@@ -151,6 +156,7 @@ export function App() {
   function handleNewStrategy() {
     setSelected(undefined);
     setPreview(undefined);
+    setCandles([]);
     setAudit([]);
     setForm(initialForm);
     setExecutionMode("dry-run");
@@ -198,6 +204,46 @@ export function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleRefreshFiveMinuteCandles() {
+    if (!selected) return;
+    if (!selected.config.productId) {
+      setError("请先填写并保存 Nado 产品 ID，再拉取实盘 5 分钟 K 线。");
+      return;
+    }
+
+    setBusy(true);
+    setKlineBusy(true);
+    setError("");
+    try {
+      const status = await syncStrategy(selected.id);
+      applyStatus(status);
+      if (status.strategy.currentPrice !== undefined) {
+        setForm((current) => ({ ...current, currentPrice: formatInputNumber(status.strategy.currentPrice!) }));
+      }
+      if (!status.candles?.length) {
+        setError("未拉到 Nado 实盘 5 分钟 K 线，请检查产品 ID、网络和 NADO_CHAIN_ENV。");
+      }
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setKlineBusy(false);
+      setBusy(false);
+    }
+  }
+
+  function handleApplySuggestion() {
+    if (!suggestion) return;
+    setForm((current) => ({
+      ...current,
+      direction: suggestion.direction,
+      currentPrice: formatInputNumber(suggestion.currentPrice),
+      lowerPrice: formatInputNumber(suggestion.lowerPrice),
+      upperPrice: formatInputNumber(suggestion.upperPrice),
+      takeProfitPrice: formatInputNumber(suggestion.takeProfitPrice),
+      stopLossPrice: formatInputNumber(suggestion.stopLossPrice)
+    }));
   }
 
   async function handleStart() {
@@ -419,6 +465,15 @@ export function App() {
             </div>
             {observation ? (
               <>
+                {suggestion ? (
+                  <CurrentSuggestionCard
+                    suggestion={suggestion}
+                    onApply={handleApplySuggestion}
+                    onRefreshCandles={() => void handleRefreshFiveMinuteCandles()}
+                    refreshDisabled={!selected || busy || klineBusy}
+                    refreshing={klineBusy}
+                  />
+                ) : null}
                 <div className="range-meter">
                   <div className="range-track">
                     <span style={{ left: `${observation.rangePositionPct}%` }} />
@@ -620,6 +675,70 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
+function CurrentSuggestionCard({
+  suggestion,
+  onApply,
+  onRefreshCandles,
+  refreshDisabled,
+  refreshing
+}: {
+  suggestion: CurrentSuggestion;
+  onApply: () => void;
+  onRefreshCandles: () => void;
+  refreshDisabled: boolean;
+  refreshing: boolean;
+}) {
+  return (
+    <div className={`suggestion-block ${suggestion.tone}`}>
+      <div className="suggestion-head">
+        <div>
+          <span>当前建议</span>
+          <strong>{suggestion.directionLabel}</strong>
+        </div>
+        <div className="suggestion-actions">
+          <button className="ghost icon-text" type="button" onClick={onRefreshCandles} disabled={refreshDisabled} title="拉取 Nado 实盘 5 分钟 K 线并重算当前建议">
+            <RefreshCw size={15} />
+            {refreshing ? "拉取中" : "拉取5m K线"}
+          </button>
+          <button className="ghost" type="button" onClick={onApply}>
+            套用建议
+          </button>
+        </div>
+      </div>
+      <div className="suggestion-grid">
+        <div>
+          <span>数据源</span>
+          <strong>{suggestion.sourceLabel}</strong>
+        </div>
+        <div>
+          <span>当前价格</span>
+          <strong>{suggestion.currentPriceLabel}</strong>
+        </div>
+        <div>
+          <span>网格区间</span>
+          <strong>{suggestion.rangeLabel}</strong>
+        </div>
+        <div>
+          <span>止盈建议</span>
+          <strong>{suggestion.takeProfitLabel}</strong>
+        </div>
+        <div>
+          <span>止损建议</span>
+          <strong>{suggestion.stopLossLabel}</strong>
+        </div>
+        <div>
+          <span>盈亏比</span>
+          <strong>{suggestion.riskRewardLabel}</strong>
+        </div>
+      </div>
+      <div className="suggestion-note">
+        <span>{suggestion.contextLabel}</span>
+        <strong>{suggestion.methodLabel}</strong>
+      </div>
+    </div>
+  );
+}
+
 interface ObservationSummary {
   state: string;
   tone: "ok" | "warn" | "danger";
@@ -639,6 +758,25 @@ interface ObservationSummary {
     middle: number;
     upper: number;
   };
+}
+
+interface CurrentSuggestion {
+  direction: "long" | "short";
+  directionLabel: string;
+  tone: "long" | "short";
+  currentPrice: number;
+  lowerPrice: number;
+  upperPrice: number;
+  takeProfitPrice: number;
+  stopLossPrice: number;
+  currentPriceLabel: string;
+  rangeLabel: string;
+  takeProfitLabel: string;
+  stopLossLabel: string;
+  riskRewardLabel: string;
+  sourceLabel: string;
+  contextLabel: string;
+  methodLabel: string;
 }
 
 function strategyToForm(strategy: StrategyRecord): typeof initialForm {
@@ -679,6 +817,176 @@ function formToPayload(form: typeof initialForm): CreateStrategyPayload {
       network: form.network
     }
   };
+}
+
+function buildCurrentSuggestion(preview: GridPreview, candles: MarketCandle[]): CurrentSuggestion {
+  const { config, risk } = preview;
+  const structure = deriveMarketStructure(preview, candles);
+  const source = structure ?? buildPreviewStructure(preview);
+  const range = Math.max(source.upperPrice - source.lowerPrice, Number.EPSILON);
+  const priceStep = risk.priceStep > 0 ? risk.priceStep : range / Math.max(config.gridCount, 1);
+  const buffer = Math.max(priceStep * 0.5, range * 0.015);
+  const positionPct = clamp(((source.currentPrice - source.lowerPrice) / range) * 100, 0, 100);
+  const direction: "long" | "short" = positionPct >= 50 ? "short" : "long";
+  const isShort = direction === "short";
+
+  let takeProfitPrice = source.takeProfitPrice;
+  if (isShort && takeProfitPrice >= source.currentPrice) {
+    takeProfitPrice = Math.max(source.lowerPrice, source.currentPrice - Math.max(priceStep, range * 0.1));
+  }
+  if (!isShort && takeProfitPrice <= source.currentPrice) {
+    takeProfitPrice = Math.min(source.upperPrice, source.currentPrice + Math.max(priceStep, range * 0.1));
+  }
+
+  const stopLossPrice = isShort ? source.upperPrice + buffer : source.lowerPrice - buffer;
+  const reward = Math.abs(source.currentPrice - takeProfitPrice);
+  const riskAmount = Math.abs(stopLossPrice - source.currentPrice);
+  const riskReward = riskAmount > 0 ? reward / riskAmount : 0;
+  const contextLabel = buildSuggestionContext(direction, positionPct, source.hasCandles);
+  const roundedLower = roundScenarioPrice(source.lowerPrice);
+  const roundedUpper = roundScenarioPrice(source.upperPrice);
+  const roundedTakeProfit = roundScenarioPrice(takeProfitPrice);
+  const roundedStopLoss = roundScenarioPrice(stopLossPrice);
+  const roundedCurrent = roundScenarioPrice(source.currentPrice);
+
+  return {
+    direction,
+    directionLabel: direction === "short" ? "做空" : "做多",
+    tone: direction,
+    currentPrice: roundedCurrent,
+    lowerPrice: roundedLower,
+    upperPrice: roundedUpper,
+    takeProfitPrice: roundedTakeProfit,
+    stopLossPrice: roundedStopLoss,
+    currentPriceLabel: formatPrice(roundedCurrent),
+    rangeLabel: `${formatPrice(roundedLower)} - ${formatPrice(roundedUpper)}`,
+    takeProfitLabel: `${formatPrice(roundedTakeProfit)} ${source.takeProfitLabel}`,
+    stopLossLabel: `${formatPrice(roundedStopLoss)} ${direction === "short" ? "前高以上" : "前低以下"}`,
+    riskRewardLabel: riskReward > 0 ? `1:${riskReward.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}` : "待确认",
+    sourceLabel: source.sourceLabel,
+    contextLabel,
+    methodLabel: source.methodLabel
+  };
+}
+
+interface SuggestionStructure {
+  currentPrice: number;
+  lowerPrice: number;
+  upperPrice: number;
+  takeProfitPrice: number;
+  takeProfitLabel: string;
+  sourceLabel: string;
+  methodLabel: string;
+  hasCandles: boolean;
+}
+
+interface ImbalanceZone {
+  lower: number;
+  upper: number;
+  midpoint: number;
+}
+
+function deriveMarketStructure(preview: GridPreview, candles: MarketCandle[]): SuggestionStructure | undefined {
+  const clean = candles
+    .filter(isValidCandle)
+    .sort((left, right) => Date.parse(left.time) - Date.parse(right.time))
+    .slice(-120);
+  if (clean.length < 20) return undefined;
+
+  const latest = clean.at(-1);
+  if (!latest) return undefined;
+
+  const lowerPrice = Math.min(...clean.map((candle) => candle.low));
+  const upperPrice = Math.max(...clean.map((candle) => candle.high));
+  const range = upperPrice - lowerPrice;
+  if (!Number.isFinite(range) || range <= 0) return undefined;
+
+  const currentPrice = preview.currentPrice > 0 ? preview.currentPrice : latest.close;
+  const direction: "long" | "short" = ((currentPrice - lowerPrice) / range) * 100 >= 50 ? "short" : "long";
+  const zones = findImbalanceZones(clean);
+  const targetZone = pickTargetImbalanceZone(zones, currentPrice, direction, range);
+  const takeProfitPrice =
+    targetZone?.midpoint ?? (direction === "short" ? lowerPrice + range * 0.2 : upperPrice - range * 0.2);
+
+  return {
+    currentPrice,
+    lowerPrice,
+    upperPrice,
+    takeProfitPrice,
+    takeProfitLabel: targetZone ? (direction === "short" ? "下方失衡区" : "上方失衡区") : "失衡区近似位",
+    sourceLabel: `Nado 实盘K线 ${clean.length} 根`,
+    methodLabel: "Nado 实时价 + 5m K线结构",
+    hasCandles: true
+  };
+}
+
+function buildPreviewStructure(preview: GridPreview): SuggestionStructure {
+  const { config, currentPrice } = preview;
+  const range = Math.max(config.upperPrice - config.lowerPrice, Number.EPSILON);
+  const direction: "long" | "short" = ((currentPrice - config.lowerPrice) / range) * 100 >= 50 ? "short" : "long";
+  return {
+    currentPrice,
+    lowerPrice: config.lowerPrice,
+    upperPrice: config.upperPrice,
+    takeProfitPrice: direction === "short" ? config.lowerPrice + range * 0.2 : config.upperPrice - range * 0.2,
+    takeProfitLabel: direction === "short" ? "下方失衡区近似位" : "上方失衡区近似位",
+    sourceLabel: config.productId ? "等待 Nado K线，暂用网格区间" : "未填产品ID，暂用网格区间",
+    methodLabel: "网格前高/前低 + 失衡区近似",
+    hasCandles: false
+  };
+}
+
+function isValidCandle(candle: MarketCandle): boolean {
+  return [candle.open, candle.high, candle.low, candle.close].every((value) => Number.isFinite(value) && value > 0) && candle.high >= candle.low;
+}
+
+function findImbalanceZones(candles: MarketCandle[]): ImbalanceZone[] {
+  const zones: ImbalanceZone[] = [];
+  for (let index = 2; index < candles.length; index += 1) {
+    const left = candles[index - 2];
+    const right = candles[index];
+    if (!left || !right) continue;
+    if (left.high < right.low) {
+      zones.push({
+        lower: left.high,
+        upper: right.low,
+        midpoint: midpoint(left.high, right.low)
+      });
+    }
+    if (left.low > right.high) {
+      zones.push({
+        lower: right.high,
+        upper: left.low,
+        midpoint: midpoint(right.high, left.low)
+      });
+    }
+  }
+  return zones;
+}
+
+function pickTargetImbalanceZone(
+  zones: ImbalanceZone[],
+  currentPrice: number,
+  direction: "long" | "short",
+  range: number
+): ImbalanceZone | undefined {
+  const minimumDistance = range * 0.06;
+  if (direction === "short") {
+    return zones
+      .filter((zone) => zone.upper < currentPrice && currentPrice - zone.midpoint >= minimumDistance)
+      .sort((left, right) => right.midpoint - left.midpoint)[0];
+  }
+  return zones
+    .filter((zone) => zone.lower > currentPrice && zone.midpoint - currentPrice >= minimumDistance)
+    .sort((left, right) => left.midpoint - right.midpoint)[0];
+}
+
+function buildSuggestionContext(direction: "long" | "short", positionPct: number, hasCandles: boolean): string {
+  const sourcePrefix = hasCandles ? "实盘K线显示" : "暂用网格区间估算";
+  if (direction === "short") {
+    return positionPct >= 65 ? `${sourcePrefix}价格靠近前高，优先观察空方网格` : `${sourcePrefix}价格位于区间中上部，轻仓偏空观察`;
+  }
+  return positionPct <= 35 ? `${sourcePrefix}价格靠近前低，优先观察多方网格` : `${sourcePrefix}价格位于区间中下部，轻仓偏多观察`;
 }
 
 function buildObservation(preview: GridPreview): ObservationSummary {

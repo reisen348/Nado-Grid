@@ -379,6 +379,91 @@ select:focus {
   color: #ffaaaa;
 }
 
+.suggestion-block {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  border: 1px solid #2a3038;
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: #11161c;
+  padding: 12px;
+}
+
+.suggestion-block.long {
+  border-left-color: #5ed49f;
+}
+
+.suggestion-block.short {
+  border-left-color: #ff8f70;
+}
+
+.suggestion-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.suggestion-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.suggestion-head span,
+.suggestion-grid span,
+.suggestion-note span {
+  display: block;
+  color: #8f99a8;
+  font-size: 12px;
+}
+
+.suggestion-head strong {
+  display: block;
+  margin-top: 4px;
+  color: #f2f4f7;
+  font-size: 20px;
+}
+
+.suggestion-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.suggestion-grid div {
+  min-height: 58px;
+  border: 1px solid #252b34;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #0f1318;
+}
+
+.suggestion-grid strong,
+.suggestion-note strong {
+  display: block;
+  margin-top: 6px;
+  color: #f2f4f7;
+  font-size: 13px;
+}
+
+.suggestion-note {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid #252b34;
+  padding-top: 10px;
+}
+
+.suggestion-note strong {
+  margin-top: 0;
+  text-align: right;
+}
+
 .range-meter {
   display: grid;
   gap: 8px;
@@ -734,12 +819,23 @@ td:last-child {
   }
 
   .field-grid,
-  .metric-strip {
+  .metric-strip,
+  .suggestion-grid {
     grid-template-columns: 1fr;
   }
 
   .assist-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .suggestion-head,
+  .suggestion-note {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .suggestion-note strong {
+    text-align: left;
   }
 
   .chart-title {

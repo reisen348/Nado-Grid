@@ -2,10 +2,11 @@ import type {
   DexMarketPrice,
   DexPlacedOrder,
   FillEvent,
+  MarketCandle,
   NadoNetwork,
   PlannedOrder
 } from "../../shared/src/index.ts";
-import type { ClosePositionParams, DexAdapter, PlaceOrderContext } from "./types.ts";
+import type { CandlestickRequest, ClosePositionParams, DexAdapter, PlaceOrderContext } from "./types.ts";
 
 export class MockDexAdapter implements DexAdapter {
   readonly name = "mock";
@@ -33,6 +34,35 @@ export class MockDexAdapter implements DexAdapter {
       indexPrice: markPrice,
       updatedAt: new Date().toISOString()
     };
+  }
+
+  async getCandlesticks(market: string, _productId?: number, request: CandlestickRequest = {}): Promise<MarketCandle[]> {
+    const normalized = market.toUpperCase();
+    const basePrice = this.prices.get(normalized) ?? this.prices.get("*") ?? 100;
+    const intervalSeconds = normalizeIntervalSeconds(request.intervalSeconds);
+    const limit = normalizeLimit(request.limit);
+    const endTime = Math.floor(Date.now() / 1000 / intervalSeconds) * intervalSeconds;
+    const candles: MarketCandle[] = [];
+
+    for (let index = 0; index < limit; index += 1) {
+      const age = limit - index - 1;
+      const time = endTime - age * intervalSeconds;
+      const wave = Math.sin(index / 8) * basePrice * 0.025 + Math.cos(index / 19) * basePrice * 0.012;
+      const trend = (index - limit / 2) * basePrice * 0.00004;
+      const open = basePrice + wave + trend;
+      const close = basePrice + Math.sin((index + 1) / 8) * basePrice * 0.025 + trend;
+      const wick = basePrice * (0.0018 + (index % 5) * 0.00025);
+      candles.push({
+        time: new Date(time * 1000).toISOString(),
+        open,
+        high: Math.max(open, close) + wick,
+        low: Math.min(open, close) - wick,
+        close,
+        volume: 10 + (index % 11)
+      });
+    }
+
+    return candles;
   }
 
   async placeOrders(orders: PlannedOrder[], _context: PlaceOrderContext): Promise<DexPlacedOrder[]> {
@@ -81,4 +111,13 @@ export class MockDexAdapter implements DexAdapter {
     this.fills.push(fill);
     return fill;
   }
+}
+
+function normalizeIntervalSeconds(value: number | undefined): number {
+  return Number.isFinite(value) && value && value > 0 ? Math.trunc(value) : 300;
+}
+
+function normalizeLimit(value: number | undefined): number {
+  if (!Number.isFinite(value) || !value) return 120;
+  return Math.min(Math.max(Math.trunc(value), 20), 500);
 }

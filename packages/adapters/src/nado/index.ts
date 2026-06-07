@@ -2,10 +2,17 @@ import type {
   DexMarketPrice,
   DexPlacedOrder,
   FillEvent,
+  MarketCandle,
   NadoNetwork,
   PlannedOrder
 } from "../../../shared/src/index.ts";
-import { LiveTradingDisabledError, type ClosePositionParams, type DexAdapter, type PlaceOrderContext } from "../types.ts";
+import {
+  LiveTradingDisabledError,
+  type CandlestickRequest,
+  type ClosePositionParams,
+  type DexAdapter,
+  type PlaceOrderContext
+} from "../types.ts";
 
 export interface NadoDexAdapterOptions {
   network: NadoNetwork;
@@ -14,11 +21,17 @@ export interface NadoDexAdapterOptions {
   subaccount?: string;
   liveTradingEnabled: boolean;
   gatewayBaseUrl?: string;
+  indexerBaseUrl?: string;
 }
 
 const GATEWAY_ENDPOINTS: Record<NadoNetwork, string> = {
   mainnet: "https://gateway.nado.xyz/v1",
   testnet: "https://gateway.test.nado.xyz/v1"
+};
+
+const INDEXER_ENDPOINTS: Record<NadoNetwork, string> = {
+  mainnet: "https://archive.prod.nado.xyz/v1",
+  testnet: "https://archive.test.nado.xyz/v1"
 };
 
 export class NadoDexAdapter implements DexAdapter {
@@ -38,6 +51,19 @@ export class NadoDexAdapter implements DexAdapter {
   async getMarketPrice(market: string, productId?: number): Promise<DexMarketPrice> {
     if (!productId) {
       throw new Error(`Nado productId is required for ${market}. Add it to the strategy before live start.`);
+    }
+
+    try {
+      const markPrice = await this.getIndexerMarketPrice(productId);
+      return {
+        market: market.toUpperCase(),
+        markPrice,
+        indexPrice: markPrice,
+        updatedAt: new Date().toISOString()
+      };
+    } catch {
+      // Keep SDK and legacy gateway fallback for deployments that still expose
+      // older read APIs.
     }
 
     try {
@@ -79,6 +105,108 @@ export class NadoDexAdapter implements DexAdapter {
       indexPrice: markPrice,
       updatedAt: new Date().toISOString()
     };
+  }
+
+  async getCandlesticks(market: string, productId?: number, request: CandlestickRequest = {}): Promise<MarketCandle[]> {
+    if (!productId) {
+      throw new Error(`Nado productId is required to load candlesticks for ${market}.`);
+    }
+
+    const intervalSeconds = normalizeIntervalSeconds(request.intervalSeconds);
+    const limit = normalizeCandlestickLimit(request.limit);
+
+    try {
+      const edgeCandles = await this.getIndexerCandlesticks("edge_candlesticks", productId, intervalSeconds, limit);
+      if (edgeCandles.length > 0) return edgeCandles;
+    } catch {
+      // Fall back to archived candlesticks below.
+    }
+
+    try {
+      const archivedCandles = await this.getIndexerCandlesticks("candlesticks", productId, intervalSeconds, limit);
+      if (archivedCandles.length > 0) return archivedCandles;
+    } catch {
+      // Fall back to SDK when direct indexer HTTP is unavailable.
+    }
+
+    const client = await this.getClient(false);
+    const sdk = (await this.loadNadoSdk()) as { CandlestickPeriod?: Record<string, number> };
+    const period = selectCandlestickPeriod(intervalSeconds, sdk.CandlestickPeriod);
+
+    try {
+      if (typeof client.market.getEdgeCandlesticks === "function") {
+        const candles = await client.market.getEdgeCandlesticks({
+          productId,
+          period,
+          limit
+        });
+        return normalizeCandles(candles);
+      }
+    } catch {
+      // Fall back to archived candlesticks when the edge indexer is unavailable.
+    }
+
+    const candles = await client.market.getCandlesticks({
+      productId,
+      period,
+      limit
+    });
+    return normalizeCandles(candles);
+  }
+
+  private async getIndexerMarketPrice(productId: number): Promise<number> {
+    try {
+      const price = await this.queryIndexer("price", { product_id: productId });
+      return extractPrice(price);
+    } catch {
+      // Some products currently return zero mark/index prices while oracle and
+      // candles are populated.
+    }
+
+    try {
+      const oracle = await this.queryIndexer("oracle_price", { product_ids: [productId] });
+      return extractPrice(oracle);
+    } catch {
+      // Last candle close is the final read-only fallback for observation mode.
+    }
+
+    const candles = await this.getIndexerCandlesticks("edge_candlesticks", productId, 300, 1);
+    const last = candles.at(-1);
+    if (!last) throw new Error(`Nado indexer did not return a price for productId ${productId}.`);
+    return last.close;
+  }
+
+  private async getIndexerCandlesticks(
+    requestType: "candlesticks" | "edge_candlesticks",
+    productId: number,
+    intervalSeconds: number,
+    limit: number
+  ): Promise<MarketCandle[]> {
+    const payload = await this.queryIndexer(requestType, {
+      product_id: productId,
+      granularity: intervalSeconds,
+      limit
+    });
+    const candles = payload && typeof payload === "object" ? (payload as { candlesticks?: unknown }).candlesticks : undefined;
+    return normalizeCandles(candles);
+  }
+
+  private async queryIndexer(requestType: string, params: Record<string, unknown>): Promise<unknown> {
+    const baseUrl = this.options.indexerBaseUrl ?? INDEXER_ENDPOINTS[this.network];
+    const response = await fetch(baseUrl, {
+      method: "POST",
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ [requestType]: params })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Nado indexer ${requestType} query failed: ${response.status} ${response.statusText}`);
+    }
+
+    return response.json() as Promise<unknown>;
   }
 
   async placeOrders(orders: PlannedOrder[], context: PlaceOrderContext): Promise<DexPlacedOrder[]> {
@@ -185,7 +313,8 @@ export class NadoDexAdapter implements DexAdapter {
     const { CHAIN_ENV_TO_CHAIN } = await this.loadNadoShared();
     const { createPublicClient, createWalletClient, http } = (await import("viem")) as any;
     const { privateKeyToAccount } = (await import("viem/accounts")) as any;
-    const chain = CHAIN_ENV_TO_CHAIN[this.options.chainEnv];
+    const chainEnv = normalizeChainEnv(this.options.chainEnv, this.network);
+    const chain = CHAIN_ENV_TO_CHAIN[chainEnv];
     if (!chain) throw new Error(`Unknown Nado chain env: ${this.options.chainEnv}`);
 
     const publicClient = createPublicClient({
@@ -205,7 +334,7 @@ export class NadoDexAdapter implements DexAdapter {
       throw new Error("NADO_PRIVATE_KEY is required for Nado write operations.");
     }
 
-    return createNadoClient(this.options.chainEnv, {
+    return createNadoClient(chainEnv, {
       walletClient,
       publicClient
     });
@@ -234,6 +363,99 @@ export class NadoDexAdapter implements DexAdapter {
       );
     }
   }
+}
+
+function normalizeChainEnv(chainEnv: string, network: NadoNetwork): string {
+  if (chainEnv === "ink") return "inkMainnet";
+  if (chainEnv === "mainnet") return "inkMainnet";
+  if (chainEnv === "testnet") return "inkTestnet";
+  if (chainEnv === "inkSepolia") return "inkTestnet";
+  if (chainEnv) return chainEnv;
+  return network === "testnet" ? "inkTestnet" : "inkMainnet";
+}
+
+function selectCandlestickPeriod(intervalSeconds: number, periods: Record<string, number> | undefined): number {
+  const requested = Number.isFinite(intervalSeconds) && intervalSeconds > 0 ? intervalSeconds : 300;
+  if (!periods) return requested;
+  const supported: { seconds: number; value: number }[] = [];
+  const addPeriod = (seconds: number, value: number | undefined) => {
+    if (value !== undefined && Number.isFinite(value)) supported.push({ seconds, value });
+  };
+  addPeriod(60, periods.MIN);
+  addPeriod(300, periods.FIVE_MIN);
+  addPeriod(900, periods.FIFTEEN_MIN);
+  addPeriod(3600, periods.HOUR);
+  addPeriod(7200, periods.TWO_HOUR);
+  addPeriod(14400, periods.FOUR_HOUR);
+  addPeriod(86400, periods.DAY);
+  addPeriod(604800, periods.WEEK);
+  addPeriod(2419200, periods.MONTH);
+
+  if (supported.length === 0) return requested;
+  const exact = supported.find((item) => item.seconds === requested);
+  if (exact) return exact.value;
+  return supported.reduce((best, item) =>
+    Math.abs(item.seconds - requested) < Math.abs(best.seconds - requested) ? item : best
+  ).value;
+}
+
+function normalizeIntervalSeconds(value: number | undefined): number {
+  if (!Number.isFinite(value) || !value) return 300;
+  return Math.max(Math.trunc(value), 60);
+}
+
+function normalizeCandlestickLimit(value: number | undefined): number {
+  if (!Number.isFinite(value) || !value) return 120;
+  return Math.min(Math.max(Math.trunc(value), 20), 500);
+}
+
+function normalizeCandles(payload: unknown): MarketCandle[] {
+  if (!Array.isArray(payload)) return [];
+  return payload
+    .map(normalizeCandle)
+    .filter((candle): candle is MarketCandle => candle !== undefined)
+    .sort((left, right) => Date.parse(left.time) - Date.parse(right.time));
+}
+
+function normalizeCandle(value: unknown): MarketCandle | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  const time = normalizeCandleTime(record.time ?? record.timestamp);
+  const open = toPriceNumber(record.open ?? record.open_x18);
+  const high = toPriceNumber(record.high ?? record.high_x18);
+  const low = toPriceNumber(record.low ?? record.low_x18);
+  const close = toPriceNumber(record.close ?? record.close_x18);
+  const volume = toFiniteNumber(record.volume);
+
+  if (!time || ![open, high, low, close, volume].every(Number.isFinite)) return undefined;
+  if (high <= 0 || low <= 0 || close <= 0 || high < low) return undefined;
+  return { time, open, high, low, close, volume };
+}
+
+function normalizeCandleTime(value: unknown): string | undefined {
+  const numeric = toFiniteNumber(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return undefined;
+  const millis = numeric > 1e12 ? numeric : numeric * 1000;
+  const date = new Date(millis);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
+function toFiniteNumber(value: unknown): number {
+  if (typeof value === "number") return value;
+  if (typeof value === "bigint") return Number(value);
+  if (typeof value === "string") return Number(value);
+  if (value && typeof value === "object") {
+    const maybeNumber = (value as { toNumber?: unknown }).toNumber;
+    if (typeof maybeNumber === "function") return maybeNumber.call(value);
+    const maybeString = (value as { toString?: unknown }).toString;
+    if (typeof maybeString === "function") return Number(maybeString.call(value));
+  }
+  return Number.NaN;
+}
+
+function toPriceNumber(value: unknown): number {
+  const numeric = toFiniteNumber(value);
+  return numeric > 1e12 ? numeric / 1e18 : numeric;
 }
 
 function extractPrice(payload: unknown): number {
